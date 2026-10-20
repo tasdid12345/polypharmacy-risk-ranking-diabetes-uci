@@ -1,0 +1,36 @@
+{
+  "question": "Can a class-balanced, CV-tuned LightGBM with explicit polypharmacy-count features rank older patients on five or more concurrent drugs by 30-day readmission risk better than a standard neural-network scorer?",
+  "method": "Stratified 70/30 split (seed 42) of UCI 296 cohort (age >= 60, >= 5 concurrent drugs from num_medications). Baseline: standardised MLP on one-hot medication features. Improved: class-balanced LightGBM tuned by 3-fold CV on training data, with drug count and top pairwise co-prescription indicators, isotonic calibration. Seeds 42, 43, 44 for both models.",
+  "dataset": {
+    "name": "Diabetes 130-US hospitals for years 1999-2008 (UCI id 296), filtered cohort",
+    "source_url": "https://archive.ics.uci.edu/dataset/296/diabetes+130-us+hospitals+for+years+1999-2008",
+    "n_rows": 66924,
+    "n_train": 46846,
+    "n_test": 20078,
+    "same_as_paper": false,
+    "baseline_is_papers_method": false
+  },
+  "metric_name": "PR-AUC (average precision) on held-out test split",
+  "higher_is_better": true,
+  "baseline": "Standardised scikit-learn MLPClassifier (64-32 hidden units, early stopping) on one-hot medication features; untuned standard configuration.",
+  "improved": "Class-balanced LightGBM with CV-tuned hyper-parameters (RandomizedSearchCV, 3-fold, PR-AUC), added drug-count and top co-prescription pair features, and isotonic calibration.",
+  "metrics": {
+    "baseline_score": 0.12961380578721785,
+    "improved_score": 0.13244352366492923,
+    "improvement": 0.002829717877711385,
+    "baseline_score_std": 0.0014874118325665744,
+    "improved_score_std": 0.0010868644778821732,
+    "baseline_roc_auc": 0.5336315314614158,
+    "improved_roc_auc": 0.5479620845908387,
+    "baseline_brier": 0.10343868010959134,
+    "improved_brier": 0.10302417080084036,
+    "brier_improvement": 0.0004145093087509766,
+    "baseline_f1": 0.20706555644588806,
+    "improved_f1": 0.20749995529762813,
+    "best_cv_pr_auc": 0.12645125567540236,
+    "n_pairs": 10,
+    "n_test_positives": 2348,
+    "runtime_seconds": 18.26635718345642
+  },
+  "notes": "Rows are encounters; patient_nbr was not de-duplicated, so the split is not patient-grouped and may be optimistic. Concurrent drug count uses the num_medications column: counting only the 23 drug columns gave an active-drug count of >=5 for just 38 older encounters, too few to evaluate, so the cohort filter was changed to num_medications >= 5 (the 23 drug columns still feed the one-hot and co-prescription features). Only medication features are used (no diagnosis or lab features), so absolute performance is limited. The baseline MLP was not tuned. F1 uses the fixed training positive rate as threshold. Pair features are chosen by co-prescription frequency on training data. Best LightGBM params: {'reg_lambda': 1.0, 'num_leaves': 31, 'n_estimators': 200, 'min_child_samples': 20, 'learning_rate': 0.03}. The paper's neural-bandit model is not reproduced; the MLP is a stand-in scorer. ucimlrepo exposes no timeout, so a socket-level 60 s timeout is used."
+}
