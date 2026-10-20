@@ -1,25 +1,32 @@
-# Polypharmacy readmission ranking: LightGBM vs neural scorer
+# Polypharmacy readmission ranking (UCI Diabetes 130-US hospitals, id 296)
 
-Motivation: The paper "Neural bandits for data mining: searching for dangerous polypharmacy" (2023) frames the search for dangerous multi-drug combinations in hospital data as a learning problem. This experiment asks whether a simpler, class-balanced gradient-boosted model with explicit polypharmacy features can rank readmission risk better than a standard neural-network scorer on a public proxy dataset.
+Question: can a class-balanced, CV-tuned LightGBM with polypharmacy-count and
+co-prescription features rank older patients on five or more concurrent drugs by
+30-day readmission risk better than a standard neural-network scorer (MLP)?
 
-Question: Can a class-balanced, CV-tuned LightGBM with explicit polypharmacy-count features rank older patients on five or more concurrent drugs by 30-day readmission risk better than a standard neural-network scorer?
+## Running
 
-Dataset: UCI Diabetes 130-US hospitals for years 1999-2008 (UCI id 296), loaded with the ucimlrepo package. The cohort is restricted to older patients on five or more active medication columns. The target is readmission within thirty days. This is not the paper's own dataset.
+    pip install -r requirements.txt
+    python analysis.py
 
-Baseline: a standardised scikit-learn MLPClassifier on one-hot medication features, standing in for the paper's neural scorer.
+Writes `results.json` and `figures/pr_auc_comparison.png`.
 
-Improved model: a class-balanced LightGBM tuned by cross-validation on the training split. It adds the drug count and selected pairwise co-prescription indicators, and uses isotonic calibration.
+## Method
 
-Evaluation: a single stratified 70/30 split with seed 42. The main metric is PR-AUC on the test split; ROC-AUC, Brier score and F1 are secondary.
+- Cohort: age >= 60 and `num_medications` >= 5 (concurrent drugs).
+- Stratified 70/30 split, seed 42. Test set is used once, for the final summaries.
+- Baseline: standardised MLPClassifier on one-hot medication levels, seeds 42/43/44.
+- Improved: class-balanced LightGBM, hyper-parameters chosen by 3-fold CV on the
+  training set only, with drug count and top-10 co-prescription pair features,
+  isotonic calibration, seeds 42/43/44.
+- Metric: PR-AUC on the held-out test split (ROC-AUC, Brier and F1 also reported).
 
-## How to run
+## Caveats
 
-```
-pip install -r requirements.txt
-python analysis.py
-```
-
-Results: results are written to results.json (charts go to figures/).
+- Rows are encounters, not patients; the split is not patient-grouped.
+- The cohort filter uses `num_medications`. Counting only the 23 drug columns gave
+  just 38 eligible older encounters, which is too few to evaluate.
+- Only medication features are used, so absolute performance is limited.
 
 ## Reference
 

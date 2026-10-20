@@ -26,7 +26,7 @@ from sklearn.preprocessing import StandardScaler
 SEED = 42
 SEEDS = [42, 43, 44]                 # both models are run with these seeds
 N_PAIRS = 10                         # co-prescription pairs kept (ranked on training data only)
-MIN_AGE, MIN_DRUGS = 60, 5           # cohort: older patients on >= 5 active drugs
+MIN_AGE, MIN_DRUGS = 60, 5           # cohort: older patients on >= 5 concurrent drugs
 LEVELS = ["Steady", "Up", "Down"]    # 'No' is the reference level
 MEDS = ["metformin", "repaglinide", "nateglinide", "chlorpropamide", "glimepiride",
         "acetohexamide", "glipizide", "glyburide", "tolbutamide", "pioglitazone",
@@ -72,13 +72,16 @@ def main():
     # Age lower bound from brackets like "[60-70)"; medication levels: No/Steady/Up/Down
     age = feats["age"].astype(str).str.extract(r"\[(\d+)")[0].astype(float).values
     M = feats[MEDS].astype(str).apply(lambda s: s.str.strip())
-    A_all = (M != "No").values.astype(int)           # active-drug indicators
-    n_drugs_all = A_all.sum(1)
+    A_all = (M != "No").values.astype(int)           # active-drug indicators (23 drug columns)
+    # Concurrent drug count: the dataset's num_medications column (the 23 drug columns alone
+    # record only ~1-3 active drugs per encounter, which yields a cohort far too small to evaluate).
+    n_drugs_all = pd.to_numeric(feats["num_medications"], errors="coerce").fillna(0).values.astype(int)
     keep = (age >= MIN_AGE) & (n_drugs_all >= MIN_DRUGS)
     M, A, n_drugs = M[keep].reset_index(drop=True), A_all[keep], n_drugs_all[keep]
     # Target: readmitted within 30 days ('<30')
     y = (tgt.astype(str).str.strip().values[keep] == "<30").astype(int)
-    print(f"Cohort (age >= {MIN_AGE}, >= {MIN_DRUGS} drugs): {len(y)} rows, positive rate {y.mean():.3f}")
+    print(f"Cohort (age >= {MIN_AGE}, >= {MIN_DRUGS} concurrent drugs): {len(y)} rows, "
+          f"positive rate {y.mean():.3f}")
     if len(y) < 1000 or y.sum() < 50:
         raise SystemExit("ERROR: cohort too small for meaningful metrics")
 
@@ -157,10 +160,11 @@ def main():
         "question": "Can a class-balanced, CV-tuned LightGBM with explicit polypharmacy-count features "
                     "rank older patients on five or more concurrent drugs by 30-day readmission risk "
                     "better than a standard neural-network scorer?",
-        "method": "Stratified 70/30 split (seed 42) of UCI 296 cohort (age >= 60, >= 5 active drugs). "
-                  "Baseline: standardised MLP on one-hot medication features. Improved: class-balanced "
-                  "LightGBM tuned by 3-fold CV on training data, with drug count and top pairwise "
-                  "co-prescription indicators, isotonic calibration. Seeds 42, 43, 44 for both models.",
+        "method": "Stratified 70/30 split (seed 42) of UCI 296 cohort (age >= 60, >= 5 concurrent drugs "
+                  "from num_medications). Baseline: standardised MLP on one-hot medication features. "
+                  "Improved: class-balanced LightGBM tuned by 3-fold CV on training data, with drug count "
+                  "and top pairwise co-prescription indicators, isotonic calibration. Seeds 42, 43, 44 "
+                  "for both models.",
         "dataset": {
             "name": "Diabetes 130-US hospitals for years 1999-2008 (UCI id 296), filtered cohort",
             "source_url": URL,
@@ -196,12 +200,16 @@ def main():
             "runtime_seconds": time.time() - t0,
         },
         "notes": "Rows are encounters; patient_nbr was not de-duplicated, so the split is not "
-                 "patient-grouped and may be optimistic. Only 23 medication columns are used (no age, "
-                 "diagnosis or lab features), so absolute performance is limited. The baseline MLP was "
-                 "not tuned. F1 uses the fixed training positive rate as threshold. Pair features are "
-                 f"chosen by co-prescription frequency on training data. Best LightGBM params: "
-                 f"{search.best_params_}. The paper's neural-bandit model is not reproduced; the MLP "
-                 "is a stand-in scorer. ucimlrepo exposes no timeout, so a socket-level 60 s timeout is used.",
+                 "patient-grouped and may be optimistic. Concurrent drug count uses the num_medications "
+                 "column: counting only the 23 drug columns gave an active-drug count of >=5 for just 38 "
+                 "older encounters, too few to evaluate, so the cohort filter was changed to "
+                 "num_medications >= 5 (the 23 drug columns still feed the one-hot and co-prescription "
+                 "features). Only medication features are used (no diagnosis or lab features), so absolute "
+                 "performance is limited. The baseline MLP was not tuned. F1 uses the fixed training "
+                 "positive rate as threshold. Pair features are chosen by co-prescription frequency on "
+                 f"training data. Best LightGBM params: {search.best_params_}. The paper's neural-bandit "
+                 "model is not reproduced; the MLP is a stand-in scorer. ucimlrepo exposes no timeout, so "
+                 "a socket-level 60 s timeout is used.",
     }
     with open("results.json", "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
